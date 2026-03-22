@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>Raahat – Support System</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=Caveat:wght@400;600;700&display=swap" rel="stylesheet"/>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+           sendPasswordResetEmail, onAuthStateChanged, signOut, updateProfile }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+  import { getDatabase, ref, set, get, push, onValue, update, onDisconnect, serverTimestamp, remove }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+  const firebaseConfig = {
+  apiKey: "AIzaSyAOhENAum04XHb3uCEUaiRVJItdb523BZM",
+  authDomain: "rahhat-9ca22.firebaseapp.com",
+  databaseURL: "https://rahhat-9ca22-default-rtdb.firebaseio.com",
+  projectId: "rahhat-9ca22",
+  storageBucket: "rahhat-9ca22.firebasestorage.app",
+  messagingSenderId: "387162916010",
+  appId: "1:387162916010:web:ebf9384a14eb2338247cd3",
+  measurementId: "G-5BQ667EVKN"
+};
+
+
+  const app  = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db   = getDatabase(app);
+
+  // ── DB Helpers ──
+  const R = {
+    async addDoc(path, data)   { const r=push(ref(db,path)); await set(r,{...data,createdAt:Date.now()}); return r.key; },
+    async setDoc(path, data)   { await set(ref(db,path),data); },
+    async getDoc(path)         { const s=await get(ref(db,path)); return {exists:s.exists(),val:s.val()}; },
+    async updateDoc(path, d)   { await update(ref(db,path),d); },
+    async removeDoc(path)      { await remove(ref(db,path)); },
+    listen(path, cb)           { return onValue(ref(db,path), snap=>{ const a=[]; snap.forEach(c=>a.push({id:c.key,...c.val()})); cb(a.reverse()); }); },
+    listenObj(path, cb)        { return onValue(ref(db,path), snap=>cb(snap.val())); },
+  };
+
+  window._R    = R;
+  window._auth = auth;
+  window._db   = db;
+  window._ref  = ref;
+  window._onDisconnect = onDisconnect;
+  window._serverTs     = serverTimestamp;
+
+  window._doLogin  = (e,p) => signInWithEmailAndPassword(auth,e,p);
+  window._doForgot = e     => sendPasswordResetEmail(auth,e);
+  window._doLogout = async () => {
+    if(window._user) {
+      await R.updateDoc(`users/${window._user.uid}`,{online:false,mood:''});
+      await R.removeDoc(`online/${window._user.uid}`);
+    }
+    await signOut(auth);
+  };
+  window._doSignup = async (n,e,p) => {
+    const c = await createUserWithEmailAndPassword(auth,e,p);
+    await updateProfile(c.user,{displayName:n});
+    await R.setDoc(`users/${c.user.uid}`,{
+      username:n, avatar:'🌸', bio:'Raahat member 💙',
+      createdAt:Date.now(), besties:0, postCount:0, diaryCount:0,
+      mood:'', online:false, loyalSince:0
+    });
+  };
+  window._updateProfile = async d => {
+    if(!window._user) return;
+    await R.updateDoc(`users/${window._user.uid}`,d);
+    window._profile = {...(window._profile||{}), ...d};
+  };
+
+  onAuthStateChanged(auth, async user => {
+    window._user = user;
+    if(user){
+      const d = await R.getDoc(`users/${user.uid}`);
+      window._profile = d.exists ? d.val : {username:user.displayName||'User',avatar:'🌸',bio:'Raahat member 💙',mood:'',besties:0};
+      // Set online presence
+      await R.updateDoc(`users/${user.uid}`,{online:true});
+      await R.setDoc(`online/${user.uid}`,{uid:user.uid,username:window._profile.username,avatar:window._profile.avatar,mood:window._profile.mood||'',online:true,lastSeen:Date.now()});
+      // Auto offline on disconnect
+      const presRef = window._ref(window._db,`online/${user.uid}`);
+      window._onDisconnect(presRef).remove();
+      const userRef = window._ref(window._db,`users/${user.uid}`);
+      window._onDisconnect(userRef).update({online:false});
+      if(window._onLogin) window._onLogin();
+    } else {
+      if(window._onLogout2) window._onLogout2();
+    }
+  });
+</script>
+
+<style>
+:root{
+  --bl:#4A9EE0;--bl2:#6FB8EF;--bl3:#C8E6FA;--bl4:#EAF6FF;
+  --wh:#fff;--cr:#FFFBF0;--gd:#F4C542;
+  --tx:#1A3A5C;--sb:#6B9DBF;--dg:#FF6B6B;--gn:#4CAF50;--pu:#9B7FD4;
+  --sh:0 4px 20px rgba(74,158,224,.18);--rd:18px;
+  --fn:'Nunito',sans-serif;--df:'Caveat',cursive;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;overflow:hidden;background:#d0ecfd;font-family:var(--fn);}
+#shell{width:min(420px,100vw);height:min(860px,100vh);margin:auto;position:relative;overflow:hidden;background:var(--wh);box-shadow:0 30px 80px rgba(0,0,0,.25);display:flex;flex-direction:column;}
+@media(min-width:440px){body{display:flex;align-items:center;justify-content:center;min-height:100vh;}#shell{border-radius:40px;height:min(860px,96vh);}}
+.sc{position:absolute;inset:0;display:none;flex-direction:column;background:var(--wh);}
+.sc.on{display:flex;}
+@keyframes fUp{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes pIn{from{transform:scale(0);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes pu{0%,100%{transform:scale(1);opacity:.6}50%{transform:scale(1.3);opacity:1}}
+
+/* SPLASH */
+#splash{background:linear-gradient(160deg,#4A9EE0,#85C8EF 50%,#C8E6FA);align-items:center;justify-content:center;gap:18px;}
+.spc{width:100px;height:80px;background:#fff;border-radius:50px;position:relative;display:flex;align-items:center;justify-content:center;font-size:38px;box-shadow:0 8px 30px rgba(74,158,224,.4);animation:pIn .8s .2s both;}
+.spc::before,.spc::after{content:'';position:absolute;background:#fff;border-radius:50%;}
+.spc::before{width:45px;height:45px;top:-18px;left:15px;}
+.spc::after{width:35px;height:35px;top:-12px;right:18px;}
+.st{color:#fff;font-size:40px;font-weight:900;letter-spacing:2px;animation:pIn 1s .5s both;}
+.ss2{color:rgba(255,255,255,.85);font-size:15px;font-weight:600;animation:pIn 1s .7s both;}
+.sd{display:flex;gap:8px;margin-top:8px;animation:fUp 1s 1s both;}
+.sd span{width:8px;height:8px;background:rgba(255,255,255,.6);border-radius:50%;animation:pu 1.5s infinite;}
+.sd span:nth-child(2){animation-delay:.3s}.sd span:nth-child(3){animation-delay:.6s}
+
+/* AUTH */
+#auth{background:linear-gradient(180deg,#EAF6FF,#fff 60%);overflow-y:auto;}
+.atop{padding:40px 24px 16px;display:flex;flex-direction:column;align-items:center;gap:8px;}
+.alo{display:flex;align-items:center;gap:10px;}
+.ac{width:48px;height:38px;background:var(--bl);border-radius:24px;position:relative;display:flex;align-items:center;justify-content:center;box-shadow:var(--sh);}
+.ac::before,.ac::after{content:'';position:absolute;background:var(--bl);border-radius:50%;}
+.ac::before{width:22px;height:22px;top:-9px;left:6px;}
+.ac::after{width:17px;height:17px;top:-6px;right:7px;}
+.ac span{color:#fff;font-size:16px;z-index:1;}
+.ab{font-size:28px;font-weight:900;color:var(--bl);}
+.atg{font-size:13px;color:var(--sb);font-weight:600;text-align:center;}
+.ats{display:flex;background:var(--bl4);border-radius:14px;padding:4px;margin:0 24px 18px;}
+.at{flex:1;padding:10px;text-align:center;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;color:var(--sb);transition:.2s;}
+.at.on{background:var(--bl);color:#fff;box-shadow:var(--sh);}
+.af{padding:0 24px 30px;display:flex;flex-direction:column;gap:14px;}
+.iw{position:relative;}
+.iw i{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:18px;}
+.inp{width:100%;padding:14px 14px 14px 44px;background:var(--bl4);border:2px solid transparent;border-radius:14px;font-size:15px;font-family:var(--fn);color:var(--tx);outline:none;transition:.2s;}
+.inp:focus{border-color:var(--bl);background:#fff;}
+.bp{padding:15px;background:linear-gradient(135deg,var(--bl),var(--bl2));color:#fff;border:none;border-radius:14px;font-size:16px;font-weight:800;cursor:pointer;box-shadow:var(--sh);font-family:var(--fn);}
+.bp:active{transform:scale(.97);}
+.alk{text-align:center;font-size:13px;color:var(--sb);cursor:pointer;font-weight:600;}
+.alk span{color:var(--bl);}
+.er{background:#fff0f0;color:var(--dg);padding:10px 14px;border-radius:10px;font-size:13px;font-weight:600;display:none;}
+
+/* APP */
+#app{display:none;flex-direction:column;height:100%;}
+#app.on{display:flex;}
+.tb{padding:14px 18px 10px;display:flex;align-items:center;justify-content:space-between;background:#fff;border-bottom:1px solid #EAF6FF;flex-shrink:0;}
+.tbl{display:flex;align-items:center;gap:8px;}
+.tbc{width:36px;height:28px;background:var(--bl);border-radius:18px;position:relative;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(74,158,224,.3);}
+.tbc::before,.tbc::after{content:'';position:absolute;background:var(--bl);border-radius:50%;}
+.tbc::before{width:16px;height:16px;top:-7px;left:4px;}
+.tbc::after{width:12px;height:12px;top:-5px;right:5px;}
+.tbc span{color:#fff;font-size:12px;z-index:1;}
+.tbn{font-size:22px;font-weight:900;color:var(--bl);}
+.ib{width:38px;height:38px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;background:var(--bl4);}
+.cn{flex:1;overflow-y:auto;overflow-x:hidden;background:var(--bl4);}
+.cn::-webkit-scrollbar{width:0;}
+.bn2{display:flex;align-items:center;justify-content:space-around;background:#fff;padding:8px 0 12px;border-top:1px solid #EAF6FF;flex-shrink:0;box-shadow:0 -4px 20px rgba(74,158,224,.08);}
+.ni{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;padding:4px 10px;border-radius:12px;min-width:54px;}
+.ni .ic{font-size:22px;color:#A0C4E0;transition:.15s;}
+.ni .lb{font-size:10px;font-weight:700;color:#A0C4E0;transition:.15s;}
+.ni.on .ic,.ni.on .lb{color:var(--bl);}
+.tp{display:none;flex-direction:column;height:100%;}
+.tp.on{display:flex;}
+
+/* ── HOME ── */
+.hs{flex:1;overflow-y:auto;padding:16px 14px;}
+.hs::-webkit-scrollbar{width:0;}
+.mb{background:linear-gradient(135deg,var(--bl),#85C8EF);border-radius:var(--rd);padding:16px 18px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;box-shadow:var(--sh);}
+.mb h3{color:#fff;font-size:15px;font-weight:800;}
+.mb p{color:rgba(255,255,255,.8);font-size:12px;margin-top:2px;}
+.mes{display:flex;gap:8px;}
+.me{font-size:22px;cursor:pointer;padding:7px;border-radius:10px;background:rgba(255,255,255,.2);border:2px solid transparent;transition:.15s;}
+.me.on{background:rgba(255,255,255,.4);border-color:rgba(255,255,255,.6);transform:scale(1.15);}
+.cur-mood{margin-top:8px;font-size:12px;color:rgba(255,255,255,.9);font-weight:700;background:rgba(255,255,255,.2);border-radius:20px;padding:4px 12px;display:inline-block;}
+.sbx{background:linear-gradient(135deg,#B8A9FF,#D4CAFF);border-radius:var(--rd);padding:16px 18px;margin-bottom:14px;cursor:pointer;display:flex;align-items:center;gap:14px;box-shadow:0 4px 16px rgba(155,127,212,.25);}
+.sbx h3{color:#fff;font-size:15px;font-weight:800;}
+.sbx p{color:rgba(255,255,255,.85);font-size:12px;margin-top:2px;}
+.wb{background:#fff;border-radius:var(--rd);padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px;cursor:pointer;box-shadow:0 2px 12px rgba(74,158,224,.1);}
+.wa{width:38px;height:38px;border-radius:50%;background:var(--bl);display:flex;align-items:center;justify-content:center;font-size:18px;}
+.wp{flex:1;background:var(--bl4);border-radius:20px;padding:10px 14px;font-size:14px;color:var(--sb);font-weight:600;}
+.pc{background:#fff;border-radius:var(--rd);padding:16px;margin-bottom:12px;box-shadow:0 2px 12px rgba(74,158,224,.1);animation:fUp .3s ease both;}
+.ph2{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.pav{width:40px;height:40px;border-radius:50%;background:var(--bl3);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;}
+.pn{font-size:14px;font-weight:800;color:var(--tx);display:flex;align-items:center;gap:5px;flex-wrap:wrap;}
+.pt2{font-size:11px;color:var(--sb);margin-top:1px;}
+.pan{font-size:11px;background:var(--bl4);color:var(--bl);padding:2px 8px;border-radius:20px;font-weight:700;}
+.pdg{font-size:11px;padding:3px 10px;border-radius:20px;font-weight:700;margin-left:auto;white-space:nowrap;}
+.bso{background:#F0EBFF;color:var(--pu);}
+.bno{background:var(--bl4);color:var(--bl);}
+.pbd{font-size:14px;color:var(--tx);line-height:1.6;margin-bottom:12px;}
+.pa{display:flex;gap:14px;padding-top:8px;border-top:1px solid var(--bl4);}
+.pbtn{background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:5px;font-size:13px;color:var(--sb);font-weight:700;font-family:var(--fn);padding:4px 8px;border-radius:8px;}
+.pbtn.on{color:var(--bl);}
+
+/* comments */
+.cop{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(420px,100vw);background:#fff;border-radius:24px 24px 0 0;box-shadow:0 -10px 40px rgba(0,0,0,.15);z-index:200;max-height:70%;display:flex;flex-direction:column;transition:transform .3s ease;}
+.cop.hd{transform:translate(-50%,110%);}
+.coph{width:40px;height:4px;background:#ddd;border-radius:2px;margin:12px auto 8px;}
+.cot{padding:0 16px 10px;font-size:16px;font-weight:800;color:var(--tx);border-bottom:1px solid var(--bl4);}
+.col{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:10px;}
+.citem{display:flex;gap:10px;}
+.cav2{width:34px;height:34px;border-radius:50%;background:var(--bl3);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
+.cbd{background:var(--bl4);border-radius:12px;padding:8px 12px;flex:1;}
+.cn2{font-size:12px;font-weight:800;color:var(--bl);}
+.ct{font-size:13px;color:var(--tx);margin-top:2px;}
+.cir{display:flex;gap:8px;padding:10px 16px 20px;}
+.cii{flex:1;padding:10px 14px;background:var(--bl4);border:none;border-radius:20px;font-size:14px;font-family:var(--fn);color:var(--tx);outline:none;}
+.sbt{width:40px;height:40px;border-radius:50%;background:var(--bl);border:none;cursor:pointer;color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center;}
+
+/* ── CHAT TAB ── */
+.chat-tab-wrap{flex:1;overflow-y:auto;display:flex;flex-direction:column;}
+.mood-select-bar{background:linear-gradient(135deg,var(--bl),#85C8EF);padding:16px 16px 12px;flex-shrink:0;}
+.mood-select-bar h3{color:#fff;font-size:15px;font-weight:800;margin-bottom:10px;}
+.mood-btns{display:flex;gap:8px;}
+.mbtn{flex:1;padding:10px 6px;border-radius:12px;border:2px solid rgba(255,255,255,.3);background:rgba(255,255,255,.15);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--fn);transition:.2s;text-align:center;}
+.mbtn.on{background:rgba(255,255,255,.4);border-color:#fff;transform:scale(1.03);}
+.mood-info{padding:10px 16px 6px;background:var(--wh);border-bottom:1px solid var(--bl4);}
+.mood-info p{font-size:12px;color:var(--sb);font-weight:600;}
+.mood-info span{color:var(--bl);font-weight:800;}
+.section-hdr{padding:12px 16px 6px;font-size:13px;font-weight:800;color:var(--tx);background:var(--bl4);}
+.cl2{flex:1;overflow-y:auto;padding:10px 14px;}
+.cl2::-webkit-scrollbar{width:0;}
+.empty-msg{text-align:center;padding:30px 20px;color:var(--sb);font-size:14px;line-height:1.7;}
+/* user card in chat list */
+.uc{display:flex;align-items:center;gap:12px;background:#fff;border-radius:14px;padding:12px 14px;margin-bottom:10px;cursor:pointer;box-shadow:0 2px 10px rgba(74,158,224,.08);transition:.15s;}
+.uc:active{transform:scale(.98);}
+.uca{position:relative;width:48px;height:48px;border-radius:50%;background:var(--bl3);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;}
+.od{position:absolute;bottom:2px;right:2px;width:12px;height:12px;background:var(--gn);border-radius:50%;border:2px solid #fff;}
+.uci{flex:1;}
+.ucn{font-size:15px;font-weight:800;color:var(--tx);display:flex;align-items:center;gap:6px;}
+.ucs{font-size:12px;color:var(--sb);margin-top:2px;}
+.loy{font-size:14px;}
+.mood-pill{font-size:11px;padding:2px 8px;border-radius:20px;font-weight:700;}
+.mh{background:#E8F5E9;color:#388E3C;}
+.ms{background:#F3E5F5;color:#7B1FA2;}
+.ml{background:#E3F2FD;color:#1565C0;}
+.mn2p{background:#FFF8E1;color:#F57F17;}
+/* AI Bestie card */
+.ai-card{background:linear-gradient(135deg,#B8A9FF,#85C8EF);border-radius:14px;padding:16px 18px;margin:12px 14px 4px;display:flex;align-items:center;gap:14px;cursor:pointer;box-shadow:var(--sh);}
+.ai-card span{color:#fff;font-size:15px;font-weight:800;}
+.ai-card small{color:rgba(255,255,255,.85);font-size:12px;}
+/* Chat window */
+.cw{position:absolute;inset:0;background:#fff;display:flex;flex-direction:column;z-index:100;transform:translateX(100%);transition:transform .3s ease;}
+.cw.on{transform:translateX(0);}
+.cwt{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--bl4);background:#fff;}
+.bk{background:none;border:none;font-size:22px;cursor:pointer;color:var(--bl);}
+.cwa{width:40px;height:40px;border-radius:50%;background:var(--bl3);display:flex;align-items:center;justify-content:center;font-size:20px;}
+.cwn{font-size:16px;font-weight:800;color:var(--tx);}
+.cwst{font-size:12px;color:var(--gn);}
+.cms{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:linear-gradient(180deg,#EAF6FF,#F8FCFF);}
+.cms::-webkit-scrollbar{width:0;}
+.msg{max-width:74%;padding:10px 14px;border-radius:16px;font-size:14px;line-height:1.5;animation:fUp .2s ease both;word-break:break-word;}
+.mth{background:#fff;color:var(--tx);border-bottom-left-radius:4px;align-self:flex-start;box-shadow:0 2px 8px rgba(74,158,224,.1);}
+.mme{background:var(--bl);color:#fff;border-bottom-right-radius:4px;align-self:flex-end;}
+.mtm{font-size:10px;opacity:.6;margin-top:4px;display:block;text-align:right;}
+.date-sep{text-align:center;font-size:11px;color:var(--sb);font-weight:700;margin:8px 0;background:rgba(74,158,224,.1);border-radius:20px;padding:3px 12px;align-self:center;}
+.cir2{display:flex;gap:8px;padding:10px 14px 16px;background:#fff;border-top:1px solid var(--bl4);flex-shrink:0;}
+.mi2{flex:1;padding:11px 16px;background:var(--bl4);border:none;border-radius:22px;font-size:14px;font-family:var(--fn);color:var(--tx);outline:none;}
+.sb2{width:44px;height:44px;border-radius:50%;background:var(--bl);border:none;cursor:pointer;color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center;box-shadow:var(--sh);}
+/* Bestie request */
+.bestie-bar{background:linear-gradient(135deg,#FFE0B2,#FFF3E0);border-bottom:1px solid #FFD180;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.bestie-bar span{font-size:13px;color:#E65100;font-weight:700;}
+.bestie-btns{display:flex;gap:8px;}
+.bb{padding:6px 14px;border-radius:20px;border:none;cursor:pointer;font-size:12px;font-weight:800;font-family:var(--fn);}
+.bb-yes{background:var(--gn);color:#fff;}
+.bb-no{background:#ddd;color:var(--tx);}
+
+/* ── SEARCH ── */
+.sw2{padding:14px;}
+.sb3{display:flex;align-items:center;gap:8px;background:#fff;border-radius:14px;padding:12px 16px;margin-bottom:16px;box-shadow:0 2px 10px rgba(74,158,224,.1);}
+.sb3 input{flex:1;border:none;background:none;font-size:15px;font-family:var(--fn);color:var(--tx);outline:none;}
+.ss3 h4{font-size:14px;font-weight:800;color:var(--tx);margin-bottom:10px;}
+.cps{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;}
+.cp2{padding:8px 14px;background:#fff;border-radius:20px;font-size:13px;font-weight:700;color:var(--bl);cursor:pointer;box-shadow:0 2px 8px rgba(74,158,224,.1);}
+.ur{display:flex;align-items:center;gap:10px;background:#fff;border-radius:14px;padding:12px;margin-bottom:8px;cursor:pointer;box-shadow:0 2px 8px rgba(74,158,224,.08);}
+#search-results{margin-top:4px;}
+
+/* ── DIARY ── */
+.dw{flex:1;overflow-y:auto;background:var(--cr);padding:16px;}
+.dw::-webkit-scrollbar{width:0;}
+.dh{text-align:center;margin-bottom:16px;}
+.dh h2{font-family:var(--df);font-size:32px;color:#8B7355;font-weight:700;}
+.dh p{font-size:13px;color:#B0956B;margin-top:2px;}
+.dc{background:#FFFEF5;border-radius:16px;padding:16px 18px;box-shadow:0 3px 12px rgba(180,150,80,.15);border-left:4px solid var(--gd);position:relative;margin-bottom:12px;}
+.dc::before{content:'📌';position:absolute;top:-8px;right:14px;font-size:16px;}
+.dd{font-size:11px;color:#B0956B;font-weight:700;margin-bottom:6px;}
+.dt{font-family:var(--df);font-size:17px;color:#5C4A2A;line-height:1.6;}
+.da{position:fixed;bottom:80px;right:calc(50% - 190px);width:52px;height:52px;border-radius:50%;background:var(--gd);border:none;cursor:pointer;font-size:24px;box-shadow:0 4px 16px rgba(244,197,66,.4);z-index:50;}
+.dm{position:absolute;inset:0;background:rgba(0,0,0,.4);display:none;align-items:flex-end;z-index:150;}
+.dm.on{display:flex;}
+.dsht{background:var(--cr);border-radius:24px 24px 0 0;width:100%;padding:20px 20px 30px;}
+.dsht h3{font-family:var(--df);font-size:24px;color:#8B7355;margin-bottom:14px;}
+.dta{width:100%;min-height:140px;background:#FFFEF5;border:2px solid #E8D5A0;border-radius:14px;padding:14px;font-family:var(--df);font-size:17px;color:#5C4A2A;outline:none;resize:none;line-height:1.6;}
+.dsv{width:100%;margin-top:12px;padding:14px;background:var(--gd);border:none;border-radius:14px;font-size:16px;font-weight:800;font-family:var(--fn);color:#fff;cursor:pointer;}
+
+/* ── PROFILE ── */
+.pw2{flex:1;overflow-y:auto;}
+.pw2::-webkit-scrollbar{width:0;}
+.phero{background:linear-gradient(160deg,var(--bl),#85C8EF);padding:30px 20px 40px;text-align:center;}
+.pb2{width:80px;height:80px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:38px;margin:0 auto 10px;box-shadow:0 4px 20px rgba(0,0,0,.2);}
+.pu2{font-size:20px;font-weight:900;color:#fff;}
+.pbi{font-size:13px;color:rgba(255,255,255,.85);margin-top:4px;}
+.lb2{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.2);border-radius:20px;padding:4px 12px;margin-top:8px;}
+.lb2 span{color:#fff;font-size:13px;font-weight:700;}
+.cur-mood-prof{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.15);border-radius:20px;padding:4px 14px;margin-top:6px;}
+.cur-mood-prof span{color:#fff;font-size:13px;font-weight:700;}
+.pst{display:flex;background:#fff;padding:16px 0;border-bottom:1px solid var(--bl4);}
+.psi{flex:1;text-align:center;border-right:1px solid var(--bl4);}
+.psi:last-child{border-right:none;}
+.psn{font-size:20px;font-weight:900;color:var(--bl);}
+.psl{font-size:11px;color:var(--sb);font-weight:600;}
+.psc{background:#fff;margin:10px 14px;border-radius:var(--rd);overflow:hidden;box-shadow:0 2px 10px rgba(74,158,224,.08);}
+.pr{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--bl4);cursor:pointer;}
+.pr:last-child{border-bottom:none;}
+.pri{width:36px;height:36px;border-radius:10px;background:var(--bl4);display:flex;align-items:center;justify-content:center;font-size:18px;}
+.prt{flex:1;}
+.prtt{font-size:14px;font-weight:700;color:var(--tx);}
+.prst{font-size:12px;color:var(--sb);}
+/* Friend list */
+.friend-section{background:#fff;margin:10px 14px 4px;border-radius:var(--rd);overflow:hidden;box-shadow:0 2px 10px rgba(74,158,224,.08);}
+.fr-hdr{padding:12px 16px;font-size:14px;font-weight:800;color:var(--tx);border-bottom:1px solid var(--bl4);}
+.fr-item{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--bl4);}
+.fr-item:last-child{border-bottom:none;}
+/* panels */
+.pnl{position:absolute;inset:0;background:#fff;z-index:120;transform:translateX(100%);transition:transform .3s ease;display:flex;flex-direction:column;}
+.pnl.on{transform:translateX(0);}
+.ptop{display:flex;align-items:center;gap:12px;padding:16px;border-bottom:1px solid var(--bl4);}
+.pttl{font-size:18px;font-weight:800;color:var(--tx);}
+.pb3{flex:1;overflow-y:auto;padding:16px;}
+.stl{font-size:12px;font-weight:800;color:var(--sb);text-transform:uppercase;letter-spacing:1px;margin:16px 0 8px;}
+.sit{display:flex;align-items:center;gap:12px;padding:14px;background:var(--bl4);border-radius:12px;margin-bottom:8px;cursor:pointer;}
+.si{font-size:20px;width:32px;text-align:center;}
+.stx{flex:1;}
+.stt{font-size:14px;font-weight:700;color:var(--tx);}
+.sst{font-size:12px;color:var(--sb);}
+.dbt{background:#FFF0F0;border-radius:12px;padding:14px;display:flex;align-items:center;gap:12px;cursor:pointer;margin-top:8px;}
+.dbt .stt{color:var(--dg);}
+.tcb h3{font-size:16px;font-weight:800;color:var(--bl);margin-bottom:8px;}
+.tcb p{font-size:13px;color:var(--tx);line-height:1.7;margin-bottom:12px;}
+.tcb ul{padding-left:16px;margin-bottom:12px;}
+.tcb li{font-size:13px;color:var(--tx);line-height:1.7;margin-bottom:6px;}
+/* Modals */
+.mo{position:absolute;inset:0;background:rgba(0,0,0,.4);z-index:150;display:none;align-items:flex-end;}
+.mo.on{display:flex;}
+.ms2{background:#fff;border-radius:24px 24px 0 0;width:100%;padding:20px 20px 30px;}
+.ms2 h3{font-size:16px;font-weight:800;color:var(--tx);margin-bottom:14px;}
+.mta2{width:100%;min-height:100px;background:var(--bl4);border:2px solid transparent;border-radius:14px;padding:14px;font-family:var(--fn);font-size:14px;color:var(--tx);outline:none;resize:none;}
+.mop{display:flex;align-items:center;justify-content:space-between;margin-top:12px;}
+.ato{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--sb);cursor:pointer;}
+.tsw{width:40px;height:22px;background:#ddd;border-radius:11px;position:relative;cursor:pointer;transition:.2s;}
+.tsw.on{background:var(--bl);}
+.tsw::after{content:'';position:absolute;width:18px;height:18px;background:#fff;border-radius:50%;top:2px;left:2px;transition:.2s;}
+.tsw.on::after{left:20px;}
+.mst{padding:12px 24px;background:var(--bl);color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:800;font-family:var(--fn);cursor:pointer;box-shadow:var(--sh);}
+.sms{background:#fff;border-radius:24px 24px 0 0;width:100%;padding:20px 20px 30px;}
+.sms h3{font-size:18px;font-weight:800;color:var(--pu);margin-bottom:6px;}
+.sms p{font-size:13px;color:var(--sb);margin-bottom:14px;}
+.sta2{width:100%;min-height:100px;background:#F0EBFF;border:2px solid transparent;border-radius:14px;padding:14px;font-family:var(--fn);font-size:14px;color:var(--tx);outline:none;resize:none;}
+.san{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;font-weight:700;color:var(--sb);}
+.ss4{width:100%;margin-top:12px;padding:14px;background:linear-gradient(135deg,var(--pu),#B8A9FF);color:#fff;border:none;border-radius:14px;font-size:15px;font-weight:800;font-family:var(--fn);cursor:pointer;}
+/* toast */
+#toast{position:absolute;bottom:90px;left:50%;transform:translateX(-50%) translateY(20px);background:rgba(26,58,92,.9);color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;font-weight:600;white-space:nowrap;pointer-events:none;opacity:0;transition:.3s;z-index:300;}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0);}
+/* typing */
+.typing{display:flex;gap:4px;padding:8px 14px;align-self:flex-start;}
+.typing span{width:7px;height:7px;background:var(--sb);border-radius:50%;animation:pu .8s infinite;}
+.typing span:nth-child(2){animation-delay:.2s}
+.typing span:nth-child(3){animation-delay:.4s}
+</style>
+</head>
+<body>
+<div id="shell">
+
+<!-- SPLASH -->
+<div class="sc on" id="splash">
+  <div class="spc">☁</div>
+  <div class="st">Raahat</div>
+  <div class="ss2">🌸 Sukoon ka apna koona</div>
+  <div class="sd"><span></span><span></span><span></span></div>
+</div>
+
+<!-- AUTH -->
+<div class="sc" id="auth">
+  <div class="atop">
+    <div class="alo"><div class="ac"><span>☁</span></div><div class="ab">Raahat</div></div>
+    <div class="atg">Apne dil ki baat, apne andaaz mein 💙</div>
+  </div>
+  <div class="ats">
+    <div class="at on" id="tl" onclick="swT('login')">Login</div>
+    <div class="at" id="ts" onclick="swT('signup')">New Account</div>
+  </div>
+  <div id="fl" class="af">
+    <div class="iw"><i>✉️</i><input class="inp" id="le" type="email" placeholder="Email"/></div>
+    <div class="iw"><i>🔒</i><input class="inp" id="lp" type="password" placeholder="Password"/></div>
+    <div class="er" id="lerr"></div>
+    <button class="bp" onclick="doLogin()">Login karein 💙</button>
+    <div class="alk" onclick="doForgot()">Password bhool gaye? <span>Reset karein</span></div>
+  </div>
+  <div id="fs" class="af" style="display:none;">
+    <div class="iw"><i>👤</i><input class="inp" id="sn" type="text" placeholder="Username"/></div>
+    <div class="iw"><i>✉️</i><input class="inp" id="se" type="email" placeholder="Email"/></div>
+    <div class="iw"><i>🔒</i><input class="inp" id="sp" type="password" placeholder="Password (6+ chars)"/></div>
+    <div class="er" id="serr"></div>
+    <button class="bp" onclick="doSignup()">Account banayein 🌸</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="tb">
+    <div class="tbl"><div class="tbc"><span>☁</span></div><div class="tbn">Raahat</div></div>
+    <div class="ib" id="notif-btn" onclick="toast('Notifications coming soon! 🔔')">🔔</div>
+  </div>
+  <div class="cn">
+
+    <!-- HOME -->
+    <div class="tp on" id="t-home">
+      <div class="hs">
+        <div class="mb">
+          <div>
+            <h3>Aaj ka mood? 😊</h3>
+            <p>Select karo, same mood wale milenge</p>
+            <div class="cur-mood" id="home-mood-lbl" style="display:none;"></div>
+          </div>
+          <div class="mes">
+            <button class="me" onclick="setMood('happy','😊')" id="mm-happy">😊</button>
+            <button class="me" onclick="setMood('sad','😢')" id="mm-sad">😢</button>
+            <button class="me" onclick="setMood('lonely','😔')" id="mm-lonely">😔</button>
+            <button class="me" onclick="setMood('nervous','😰')" id="mm-nervous">😰</button>
+          </div>
+        </div>
+        <div class="sbx" onclick="openSorry()">
+          <div style="font-size:34px;">💜</div>
+          <div><h3>Sorry Share / Regret</h3><p>Dil ka bojh halka karo, anonymously</p></div>
+        </div>
+        <div class="wb" onclick="openPost()">
+          <div class="wa" id="hav">🌸</div>
+          <div class="wp">Kuch share karo...</div>
+        </div>
+        <div id="feed"></div>
+      </div>
+    </div>
+
+    <!-- CHAT -->
+    <div class="tp" id="t-chat">
+      <div class="chat-tab-wrap">
+        <!-- AI Bestie -->
+        <div class="ai-card" onclick="openAI()">
+          <span style="font-size:30px;">🤖</span>
+          <div>
+            <span>AI Bestie</span><br>
+            <small>Hamesha sunne ke liye taiyaar 💙</small>
+          </div>
+        </div>
+        <!-- Mood bar -->
+        <div class="mood-select-bar">
+          <h3>🎯 Mood match karke baat karo</h3>
+          <div class="mood-btns">
+            <div class="mbtn" id="chat-mm-happy" onclick="setChatMood('happy','😊 Happy')">😊 Happy</div>
+            <div class="mbtn" id="chat-mm-sad" onclick="setChatMood('sad','😢 Sad')">😢 Sad</div>
+            <div class="mbtn" id="chat-mm-lonely" onclick="setChatMood('lonely','😔 Lonely')">😔 Lonely</div>
+            <div class="mbtn" id="chat-mm-nervous" onclick="setChatMood('nervous','😰 Nervous')">😰 Nervous</div>
+          </div>
+        </div>
+        <div class="mood-info"><p>Sirf <span id="mood-count">0</span> log same mood mein hain – inse baat karo 💙</p></div>
+        <div class="section-hdr">👥 Same mood wale log</div>
+        <div class="cl2" id="mood-user-list">
+          <div class="empty-msg">Pehle upar apna mood select karo 👆<br>Phir same mood ke log yahan dikhenge</div>
+        </div>
+      </div>
+      <!-- Chat Window (real) -->
+      <div class="cw" id="cwin">
+        <div class="cwt">
+          <button class="bk" onclick="closeChat()">←</button>
+          <div class="cwa" id="cwav">🌸</div>
+          <div style="flex:1">
+            <div class="cwn" id="cwname">Name</div>
+            <div class="cwst" id="cwst">● online</div>
+          </div>
+          <div id="bestie-req-btn" style="display:none;">
+            <button style="padding:6px 12px;background:var(--gd);border:none;border-radius:20px;font-size:12px;font-weight:800;cursor:pointer;font-family:var(--fn);" onclick="sendBestieReq()">🤞 Bestie?</button>
+          </div>
+        </div>
+        <div class="bestie-bar" id="bestie-bar" style="display:none;">
+          <span>🤞 Bestie banana chahte ho?</span>
+          <div class="bestie-btns">
+            <button class="bb bb-yes" onclick="acceptBestie()">Haan 💙</button>
+            <button class="bb bb-no" onclick="rejectBestie()">Nahi</button>
+          </div>
+        </div>
+        <div class="cms" id="cmsgs"></div>
+        <div class="cir2">
+          <input class="mi2" id="minp" placeholder="Kuch likho..." onkeydown="if(event.key==='Enter')sendMsg()"/>
+          <button class="sb2" onclick="sendMsg()">➤</button>
+        </div>
+      </div>
+      <!-- AI Window -->
+      <div class="cw" id="aiwin" style="z-index:110;">
+        <div class="cwt">
+          <button class="bk" onclick="closeAI()">←</button>
+          <div style="font-size:28px;">🤖</div>
+          <div><div class="cwn">AI Bestie</div><div class="cwst">● Hamesha yahan</div></div>
+        </div>
+        <div class="cms" id="aimsgs">
+          <div class="msg mth">Heyy! 😊 Main AI Bestie hoon. Dil ki baat karo, main sun'ta hoon 💙<span class="mtm">Abhi</span></div>
+        </div>
+        <div class="cir2">
+          <input class="mi2" id="aiinp" placeholder="Kuch bhi poochho..." onkeydown="if(event.key==='Enter')sendAI()"/>
+          <button class="sb2" onclick="sendAI()">➤</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SEARCH -->
+    <div class="tp" id="t-search">
+      <div class="sw2">
+        <div class="sb3"><span>🔍</span><input id="sinp" placeholder="Post ya user dhoondho..." oninput="doSrch(this.value)"/><span>🎤</span></div>
+        <div class="ss3">
+          <h4>✨ Trending Topics</h4>
+          <div class="cps">
+            <div class="cp2" onclick="topS(this)">😊 Sukoon</div>
+            <div class="cp2" onclick="topS(this)">💙 Mental Health</div>
+            <div class="cp2" onclick="topS(this)">🌸 Self Love</div>
+            <div class="cp2" onclick="topS(this)">🤝 Friendship</div>
+            <div class="cp2" onclick="topS(this)">🌅 New Beginning</div>
+            <div class="cp2" onclick="topS(this)">💜 Sorry Share</div>
+            <div class="cp2" onclick="topS(this)">😔 Loneliness</div>
+            <div class="cp2" onclick="topS(this)">💪 Motivation</div>
+          </div>
+          <h4>👥 Online Log</h4>
+          <div id="search-results"><div style="text-align:center;color:var(--sb);font-size:13px;padding:10px;">Naam type karo...</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DIARY -->
+    <div class="tp" id="t-diary">
+      <div class="dw">
+        <div class="dh"><h2>📔 Golden Diary</h2><p>Sirf tumhari, sirf tumhare liye 🔒</p></div>
+        <div id="dent"><div style="text-align:center;color:#B0956B;font-size:14px;padding:20px;">Pehli entry likho 📔</div></div>
+      </div>
+      <button class="da" onclick="openDiary()">✍️</button>
+      <div class="dm" id="dmod">
+        <div class="dsht">
+          <h3>Aaj kya hua?</h3>
+          <textarea class="dta" id="dta" placeholder="Apne dil ki baat yahan likho..."></textarea>
+          <button class="dsv" onclick="saveDiary()">💛 Save karo</button>
+          <div style="text-align:center;margin-top:10px;"><span onclick="closeDiary()" style="font-size:13px;color:#B0956B;cursor:pointer;font-weight:600;">Baad mein ✕</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PROFILE -->
+    <div class="tp" id="t-profile">
+      <div class="pw2">
+        <div class="phero">
+          <div class="pb2" id="pav2">🌸</div>
+          <div class="pu2" id="pun">Loading...</div>
+          <div class="pbi" id="pbi">Raahat member 💙</div>
+          <div class="cur-mood-prof" id="prof-mood-lbl" style="display:none;"><span></span></div>
+          <div class="lb2" id="lbdg" style="display:none;"><span>🤞 Loyal Friend</span></div>
+        </div>
+        <div class="pst">
+          <div class="psi"><div class="psn" id="stp">0</div><div class="psl">Posts</div></div>
+          <div class="psi"><div class="psn" id="stf">0</div><div class="psl">Besties</div></div>
+          <div class="psi"><div class="psn" id="std">0</div><div class="psl">Diary</div></div>
+        </div>
+        <!-- Bestie list -->
+        <div class="friend-section" id="bestie-section" style="display:none;">
+          <div class="fr-hdr">🤞 Mere Besties</div>
+          <div id="bestie-list"></div>
+        </div>
+        <div class="psc">
+          <div class="pr" onclick="openPnl('sp')"><div class="pri">⚙️</div><div class="prt"><div class="prtt">Settings</div><div class="prst">Username, Privacy, Bhasha</div></div><span>›</span></div>
+          <div class="pr" onclick="openPnl('tcp')"><div class="pri">📋</div><div class="prt"><div class="prtt">Terms & Conditions</div><div class="prst">Humare niyam padho</div></div><span>›</span></div>
+          <div class="pr" onclick="toast('Help coming soon! 🛠️')"><div class="pri">❓</div><div class="prt"><div class="prtt">Help & Support</div></div><span>›</span></div>
+          <div class="pr" onclick="doLogout()"><div class="pri">🚪</div><div class="prt"><div class="prtt" style="color:var(--dg)">Logout</div></div><span>›</span></div>
+        </div>
+      </div>
+      <!-- Settings Panel -->
+      <div class="pnl" id="sp">
+        <div class="ptop"><button class="bk" onclick="closePnl('sp')">←</button><div class="pttl">Settings ⚙️</div></div>
+        <div class="pb3">
+          <div class="stl">Account</div>
+          <div class="sit" onclick="changeUN()"><span class="si">✏️</span><div class="stx"><div class="stt">Username Change</div><div class="sst">Apna naam badlo</div></div></div>
+          <div class="sit" onclick="changeBio()"><span class="si">📝</span><div class="stx"><div class="stt">Bio Change</div><div class="sst">Apne baare mein kuch likho</div></div></div>
+          <div class="sit" onclick="changeAvatar()"><span class="si">🎭</span><div class="stx"><div class="stt">Avatar (Emoji) Change</div><div class="sst">Apna avatar chunno</div></div></div>
+          <div class="stl">Privacy</div>
+          <div class="sit" onclick="toast('Har post mein anon toggle hai ✅')"><span class="si">🕵️</span><div class="stx"><div class="stt">Anonymous Posting</div><div class="sst">Naam chupaein</div></div></div>
+          <div class="sit" onclick="toast('Phone number 100% masked hai 🔒')"><span class="si">📵</span><div class="stx"><div class="stt">Phone Masking</div><div class="sst">Kisi ko nahi dikhta</div></div></div>
+          <div class="stl">Safety</div>
+          <div class="sit" onclick="openPnl('tcp')"><span class="si">📋</span><div class="stx"><div class="stt">Terms & Conditions</div><div class="sst">v1.0</div></div></div>
+          <div class="sit" onclick="toast('Raahat v1.0 – Made with 💙')"><span class="si">ℹ️</span><div class="stx"><div class="stt">App Version v1.0</div></div></div>
+          <div class="dbt" onclick="doLogout()"><span class="si">🚪</span><div class="stx"><div class="stt">Logout</div></div></div>
+        </div>
+      </div>
+      <!-- T&C Panel -->
+      <div class="pnl" id="tcp">
+        <div class="ptop"><button class="bk" onclick="closePnl('tcp')">←</button><div class="pttl">Terms & Conditions 📋</div></div>
+        <div class="pb3 tcb">
+          <h3>Raahat – Niyam aur Shart</h3>
+          <p><strong>Update:</strong> March 2025</p>
+          <p>Raahat ek safe platform hai depression aur mental stress se guzar rahe logon ke liye.</p>
+          <h3>1. Privacy</h3>
+          <ul><li>Phone number 100% masked rahega.</li><li>Diary sirf aapke liye private hai.</li><li>Anonymous posts mein identity nahi batai jaegi.</li><li>Data Firebase secure servers par.</li></ul>
+          <h3>2. Community Niyam</h3>
+          <ul><li>Hurt karne wali baat post mat karo.</li><li>Violence, hate speech bilkul nahi.</li><li>Sorry Share sirf apni baat ke liye hai.</li><li>Dusron ki privacy ka samman karo.</li></ul>
+          <h3>3. Chat Rules</h3>
+          <ul><li>Mood match chat sirf same mood ke logon se hogi.</li><li>Inappropriate messages se account ban hoga.</li><li>Besties sirf 2 rakh sakte ho ek baar mein.</li></ul>
+          <h3>4. Loyalty Tick 🤞</h3>
+          <ul><li>Jo users 1 saal tak wohi 2 besties rakhte hain unhe milta hai.</li></ul>
+          <h3>5. Mental Health</h3>
+          <p>Raahat emotional support hai, professional advice nahi. Serious problems mein doctor se milein.</p>
+          <p style="margin-top:16px;color:var(--bl);font-weight:700;">Raahat mein aapka swagat hai 💙</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /cn -->
+
+  <div class="bn2">
+    <div class="ni on" onclick="swTab('home',this)"><div class="ic">🏠</div><div class="lb">Home</div></div>
+    <div class="ni" onclick="swTab('chat',this)"><div class="ic">💬</div><div class="lb">Chat</div></div>
+    <div class="ni" onclick="swTab('search',this)"><div class="ic">🔍</div><div class="lb">Search</div></div>
+    <div class="ni" onclick="swTab('diary',this)"><div class="ic">📔</div><div class="lb">Diary</div></div>
+    <div class="ni" onclick="swTab('profile',this)"><div class="ic">👤</div><div class="lb">Profile</div></div>
+  </div>
+</div><!-- /app -->
+
+<!-- Post Modal -->
+<div class="mo" id="pmo">
+  <div class="ms2">
+    <h3>✍️ Kuch Share Karo</h3>
+    <textarea class="mta2" id="pta" placeholder="Apne dil ki baat..."></textarea>
+    <div class="mop">
+      <div class="ato" onclick="togA()"><div class="tsw" id="atsw"></div><span id="atlb">Anonymous</span></div>
+      <button class="mst" onclick="submitPost()">Post karo 💙</button>
+    </div>
+    <div style="text-align:right;margin-top:10px;"><span onclick="closePost()" style="font-size:13px;color:var(--sb);cursor:pointer;font-weight:600;">✕ Baat mat karo</span></div>
+  </div>
+</div>
+
+<!-- Sorry Modal -->
+<div class="mo" id="smo">
+  <div class="sms">
+    <h3>💜 Sorry Share</h3>
+    <p>Jo baat andar ghoot rahi hai, yahan likho.</p>
+    <textarea class="sta2" id="sta" placeholder="Woh baat jo pachtawa deti hai..."></textarea>
+    <div class="san"><div class="tsw on" id="stsw" onclick="togS()"></div><span id="stlb">Anonymous (default ON)</span></div>
+    <button class="ss4" onclick="submitSorry()">Bojh halka karo 💜</button>
+    <div style="text-align:center;margin-top:10px;"><span onclick="closeSorry()" style="font-size:13px;color:var(--sb);cursor:pointer;font-weight:600;">Baad mein ✕</span></div>
+  </div>
+</div>
+
+<!-- Comments -->
+<div class="cop hd" id="cop">
+  <div class="coph"></div>
+  <div class="cot">💬 Comments</div>
+  <div class="col" id="col"></div>
+  <div class="cir">
+    <input class="cii" id="cii" placeholder="Comment likho..." onkeydown="if(event.key==='Enter')submitC()"/>
+    <button class="sbt" onclick="submitC()">➤</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+</div><!-- /shell -->
+
+<script>
+/* ═══════════════ STATE ═══════════════ */
+let isA=false, isSA=true, curPId=null;
+let curChatUID=null, curChatName='', curMsgListener=null;
+let myMood='', chatFilterMood='';
+let besties=[];
+let pendingBestieFrom=null;
+
+/* ═══════════════ SPLASH ═══════════════ */
+window.addEventListener('load',()=>{
+  setTimeout(()=>{
+    document.getElementById('splash').classList.remove('on');
+    document.getElementById('auth').classList.add('on');
+  },2200);
+});
+
+window._onLogin=()=>{
+  document.getElementById('auth').classList.remove('on');
+  document.getElementById('app').classList.add('on');
+  loadProfile();
+  loadFeed();
+  loadDiary();
+  listenBesties();
+  listenBestieRequests();
+};
+window._onLogout2=()=>{
+  document.getElementById('app').classList.remove('on');
+  document.getElementById('auth').classList.add('on');
+};
+
+/* ═══════════════ AUTH ═══════════════ */
+function swT(t){
+  document.getElementById('tl').classList.toggle('on',t==='login');
+  document.getElementById('ts').classList.toggle('on',t==='signup');
+  document.getElementById('fl').style.display=t==='login'?'flex':'none';
+  document.getElementById('fs').style.display=t==='signup'?'flex':'none';
+}
+async function doLogin(){
+  const e=g('le').value.trim(),p=g('lp').value,err=g('lerr');
+  err.style.display='none';
+  if(!e||!p){showErr(err,'Email aur password bharo');return;}
+  try{await window._doLogin(e,p);}catch(x){showErr(err,fE(x.code));}
+}
+async function doSignup(){
+  const n=g('sn').value.trim(),e=g('se').value.trim(),p=g('sp').value,err=g('serr');
+  err.style.display='none';
+  if(!n||!e||!p){showErr(err,'Sab fields bharo');return;}
+  if(p.length<6){showErr(err,'Password 6+ chars ka ho');return;}
+  try{await window._doSignup(n,e,p);}catch(x){showErr(err,fE(x.code));}
+}
+async function doForgot(){
+  const e=g('le').value.trim();
+  if(!e){showErr(g('lerr'),'Email pehle likho');return;}
+  try{await window._doForgot(e);toast('Reset email bheja! 📧');}catch(x){showErr(g('lerr'),fE(x.code));}
+}
+async function doLogout(){await window._doLogout();closePnl('sp');toast('Alvida! 👋');}
+function showErr(el,m){el.textContent=m;el.style.display='block';}
+function fE(c){return{'auth/wrong-password':'Galat password','auth/user-not-found':'Account nahi mila','auth/email-already-in-use':'Email already hai','auth/invalid-email':'Email sahi nahi','auth/invalid-credential':'Email ya password galat','auth/weak-password':'Password weak hai'}[c]||'Kuch gadbad hua, dobara try karo';}
+
+/* ═══════════════ PROFILE ═══════════════ */
+async function loadProfile(){
+  if(!window._user) return;
+  const d = await window._R.getDoc(`users/${window._user.uid}`);
+  const p = d.exists ? d.val : {username:'User',avatar:'🌸',bio:'Raahat member 💙',mood:'',besties:0};
+  window._profile = p;
+  g('pun').textContent = p.username||'User';
+  g('pbi').textContent = p.bio||'Raahat member 💙';
+  g('pav2').textContent = p.avatar||'🌸';
+  g('hav').textContent  = p.avatar||'🌸';
+  g('stf').textContent  = (p.bestieList ? Object.keys(p.bestieList).length : 0);
+  // Mood label on profile
+  if(p.mood){ const ml=g('prof-mood-lbl'); ml.style.display='inline-flex'; ml.querySelector('span').textContent=moodEmoji(p.mood)+' '+p.mood; }
+  // Loyalty tick
+  if(p.loyalSince && Date.now()-p.loyalSince>=365*24*3600*1000 && Object.keys(p.bestieList||{}).length>=2) g('lbdg').style.display='inline-flex';
+  // myMood
+  if(p.mood) { myMood=p.mood; highlightMoodBtn(p.mood); }
+}
+
+function moodEmoji(m){ return{happy:'😊',sad:'😢',lonely:'😔',nervous:'😰'}[m]||'😶'; }
+
+async function changeUN(){
+  const n=prompt('Naya username:');if(!n||!n.trim())return;
+  await window._updateProfile({username:n.trim()});
+  await window._R.updateDoc(`online/${window._user.uid}`,{username:n.trim()});
+  toast('Username badal gaya! ✅');loadProfile();
+}
+async function changeBio(){
+  const b=prompt('Naya bio:');if(b===null)return;
+  await window._updateProfile({bio:b.trim()||'Raahat member 💙'});
+  toast('Bio update ho gaya! ✅');loadProfile();
+}
+async function changeAvatar(){
+  const avList=['🌸','🌻','🌷','🌴','☁️','🌙','⭐','🌺','🍀','🦋','🌈','💫','🎈','🐢','🦄'];
+  const av=prompt('Avatar emoji chunno:\n'+avList.join(' '));
+  if(!av||!av.trim())return;
+  await window._updateProfile({avatar:av.trim()});
+  await window._R.updateDoc(`online/${window._user.uid}`,{avatar:av.trim()});
+  g('hav').textContent=av.trim();
+  toast('Avatar badal gaya! ✅');loadProfile();
+}
+
+/* ═══════════════ MOOD ═══════════════ */
+async function setMood(mood, emoji){
+  myMood = mood;
+  if(window._user){
+    await window._R.updateDoc(`users/${window._user.uid}`,{mood});
+    await window._R.updateDoc(`online/${window._user.uid}`,{mood});
+    if(window._profile) window._profile.mood=mood;
+  }
+  // highlight
+  highlightMoodBtn(mood);
+  const lbl=g('home-mood-lbl');lbl.style.display='block';lbl.textContent=emoji+' Mood set! Chat tab pe jao 💙';
+  toast(`Mood set: ${emoji} — Same mood wale chat mein milenge!`);
+  // sync profile label
+  const ml=g('prof-mood-lbl');ml.style.display='inline-flex';ml.querySelector('span').textContent=emoji+' '+mood;
+}
+function highlightMoodBtn(mood){
+  ['happy','sad','lonely','nervous'].forEach(m=>{
+    const b=g('mm-'+m);if(b)b.classList.toggle('on',m===mood);
+  });
+}
+
+/* ═══════════════ CHAT – MOOD MATCH ═══════════════ */
+let moodUsersListener=null;
+function setChatMood(mood, label){
+  chatFilterMood=mood;
+  ['happy','sad','lonely','nervous'].forEach(m=>{
+    const b=g('chat-mm-'+m);if(b)b.classList.toggle('on',m===mood);
+  });
+  loadMoodUsers(mood);
+}
+
+function loadMoodUsers(mood){
+  if(moodUsersListener) moodUsersListener();
+  const list=g('mood-user-list');
+  list.innerHTML='<div class="empty-msg">Load ho raha hai...</div>';
+  moodUsersListener = window._R.listenObj('online', all=>{
+    if(!all){ list.innerHTML='<div class="empty-msg">Koi nahi mila abhi 😔</div>'; g('mood-count').textContent='0'; return; }
+    const users=Object.entries(all)
+      .map(([uid,v])=>({uid,...v}))
+      .filter(u=>u.mood===mood && u.uid!==window._user?.uid);
+    g('mood-count').textContent=users.length;
+    if(!users.length){
+      list.innerHTML=`<div class="empty-msg">Abhi koi ${moodEmoji(mood)} ${mood} mood mein nahi hai 😔<br><br>Thodi der mein dobara check karo!</div>`;
+      return;
+    }
+    list.innerHTML='';
+    users.forEach(u=>{
+      const isBestie = besties.includes(u.uid);
+      const isLoyal  = u.loyalSince && Date.now()-u.loyalSince>=365*24*3600*1000;
+      const d=document.createElement('div');d.className='uc';
+      d.onclick=()=>openChat(u.uid,u.username||'User',u.avatar||'🌸',true,isBestie);
+      d.innerHTML=`
+        <div class="uca">${u.avatar||'🌸'}<div class="od"></div></div>
+        <div class="uci">
+          <div class="ucn">${u.username||'User'} ${isBestie?'🤞':''} ${isLoyal?'<span style="font-size:11px;background:#FFF9E6;color:#F4C030;padding:2px 6px;border-radius:20px;font-weight:800;">Loyal</span>':''}</div>
+          <div class="ucs"><span class="mood-pill ${mood==='happy'?'mh':mood==='sad'?'ms':mood==='lonely'?'ml':'mn2p'}">${moodEmoji(mood)} ${mood}</span> • Online</div>
+        </div>
+        <div style="font-size:22px;color:var(--bl);">💬</div>`;
+      list.appendChild(d);
+    });
+  });
+}
+
+/* ═══════════════ REAL CHAT ═══════════════ */
+function getChatId(uid1,uid2){ return [uid1,uid2].sort().join('_'); }
+
+function openChat(theirUID, name, avatar, online, isBestie){
+  curChatUID=theirUID;curChatName=name;
+  g('cwav').textContent=avatar;
+  g('cwname').textContent=name;
+  g('cwst').textContent=online?'● online':'● offline';
+  g('cwst').style.color=online?'var(--gn)':'var(--sb)';
+  // Show bestie request button if not already bestie and besties < 2
+  const canAddBestie = !isBestie && besties.length<2;
+  g('bestie-req-btn').style.display=canAddBestie?'block':'none';
+  g('bestie-bar').style.display='none';
+  g('cwin').classList.add('on');
+  // Load messages
+  const cmsgs=g('cmsgs');cmsgs.innerHTML='';
+  if(curMsgListener) curMsgListener();
+  const chatId=getChatId(window._user.uid,theirUID);
+  curMsgListener=window._R.listen(`chats/${chatId}/messages`,msgs=>{
+    cmsgs.innerHTML='';
+    if(!msgs.length){cmsgs.innerHTML='<div style="text-align:center;color:var(--sb);font-size:13px;padding:20px;">Naya dost, nai baat 💙<br>Pehla message bhejo!</div>';return;}
+    msgs.reverse().forEach(m=>{
+      const isMe=m.uid===window._user.uid;
+      cmsgs.innerHTML+=`<div class="msg ${isMe?'mme':'mth'}">${escHtml(m.text)}<span class="mtm">${fT(m.createdAt)}</span></div>`;
+    });
+    cmsgs.scrollTop=cmsgs.scrollHeight;
+  });
+  // Mark chat as seen
+  window._R.updateDoc(`chats/${chatId}`,{[`seen_${window._user.uid}`]:Date.now()}).catch(()=>{});
+}
+
+function closeChat(){
+  g('cwin').classList.remove('on');
+  if(curMsgListener){curMsgListener();curMsgListener=null;}
+  curChatUID=null;
+}
+
+async function sendMsg(){
+  const inp=g('minp'),text=inp.value.trim();
+  if(!text||!curChatUID)return;
+  inp.value='';
+  const p=window._profile||{};
+  const chatId=getChatId(window._user.uid,curChatUID);
+  try{
+    await window._R.addDoc(`chats/${chatId}/messages`,{
+      text, uid:window._user.uid, name:p.username||'User',
+      avatar:p.avatar||'🌸'
+    });
+    // Update chat meta
+    await window._R.setDoc(`chats/${chatId}/meta`,{
+      users:[window._user.uid,curChatUID],
+      lastMsg:text, lastAt:Date.now(),
+      [`user_${window._user.uid}`]:p.username||'User',
+      [`user_${curChatUID}`]:curChatName,
+    });
+  }catch(e){ toast('Message nahi gaya, dobara try karo 😔'); }
+}
+
+/* ═══════════════ BESTIES ═══════════════ */
+function listenBesties(){
+  if(!window._user) return;
+  window._R.listenObj(`users/${window._user.uid}/bestieList`,bl=>{
+    besties = bl ? Object.keys(bl) : [];
+    g('stf').textContent = besties.length;
+    // show bestie section
+    if(besties.length>0){
+      g('bestie-section').style.display='block';
+      const bl2=g('bestie-list');bl2.innerHTML='';
+      Object.entries(bl).forEach(([uid,info])=>{
+        const since=info.since;
+        const months=since?Math.floor((Date.now()-since)/(30*24*3600*1000)):0;
+        const isLoyal=since&&(Date.now()-since)>=365*24*3600*1000;
+        bl2.innerHTML+=`<div class="fr-item"><div class="pav" style="width:36px;height:36px;font-size:18px;">${info.avatar||'🌸'}</div><div style="flex:1"><div style="font-size:14px;font-weight:800;color:var(--tx)">${info.name} ${isLoyal?'🤞':''}</div><div style="font-size:11px;color:var(--sb)">${months} mahine se saath</div></div>${isLoyal?'<span style="font-size:20px;">🤞</span>':''}</div>`;
+      });
+    } else { g('bestie-section').style.display='none'; }
+    // Check loyal
+    if(besties.length>=2 && window._profile?.loyalSince){
+      if(Date.now()-window._profile.loyalSince>=365*24*3600*1000) g('lbdg').style.display='inline-flex';
+    }
+  });
+}
+
+function listenBestieRequests(){
+  if(!window._user) return;
+  window._R.listenObj(`bestieRequests/${window._user.uid}`,reqs=>{
+    if(!reqs) return;
+    Object.entries(reqs).forEach(([fromUID,info])=>{
+      pendingBestieFrom={uid:fromUID,...info};
+      // Show in active chat if open
+      if(curChatUID===fromUID){
+        g('bestie-bar').style.display='flex';
+      } else {
+        toast(`🤞 ${info.name} ne Bestie request bheja!`);
+      }
+    });
+  });
+}
+
+async function sendBestieReq(){
+  if(!curChatUID) return;
+  if(besties.length>=2){ toast('Aapke paas pehle se 2 besties hain 🤞'); return; }
+  const p=window._profile||{};
+  await window._R.setDoc(`bestieRequests/${curChatUID}/${window._user.uid}`,{
+    name:p.username||'User', avatar:p.avatar||'🌸', uid:window._user.uid, sentAt:Date.now()
+  });
+  toast('Bestie request bhej diya! 🤞');
+  g('bestie-req-btn').style.display='none';
+}
+
+async function acceptBestie(){
+  if(!pendingBestieFrom) return;
+  if(besties.length>=2){ toast('Aapke paas pehle se 2 besties hain!'); rejectBestie(); return; }
+  const me=window._profile||{};const them=pendingBestieFrom;
+  const now=Date.now();
+  // Add to each other's bestieList
+  await window._R.setDoc(`users/${window._user.uid}/bestieList/${them.uid}`,{name:them.name,avatar:them.avatar,since:now});
+  await window._R.setDoc(`users/${them.uid}/bestieList/${window._user.uid}`,{name:me.username||'User',avatar:me.avatar||'🌸',since:now});
+  // If first besties, set loyalSince
+  if(besties.length===0){
+    await window._R.updateDoc(`users/${window._user.uid}`,{loyalSince:now});
+    await window._R.updateDoc(`users/${them.uid}`,{loyalSince:now});
+  }
+  // Remove request
+  await window._R.removeDoc(`bestieRequests/${window._user.uid}/${them.uid}`);
+  g('bestie-bar').style.display='none';
+  toast('🤞 Bestie ban gaye! Ek saal loyal raho!');
+  pendingBestieFrom=null;
+}
+async function rejectBestie(){
+  if(!pendingBestieFrom) return;
+  await window._R.removeDoc(`bestieRequests/${window._user.uid}/${pendingBestieFrom.uid}`);
+  g('bestie-bar').style.display='none';
+  pendingBestieFrom=null;
+}
+
+/* ═══════════════ FEED ═══════════════ */
+function loadFeed(){
+  window._R.listen('posts', posts=>{
+    const feed=g('feed');feed.innerHTML='';
+    if(!posts.length){feed.innerHTML='<div style="text-align:center;padding:30px;color:var(--sb);font-size:14px;">Koi post nahi.<br>Pehli post aap karo! 🌸</div>';return;}
+    posts.forEach(p=>{
+      const d=document.createElement('div');d.className='pc';
+      d.innerHTML=`<div class="ph2"><div class="pav">${p.avatar||'🌸'}</div><div style="flex:1"><div class="pn">${p.anon?'Anonymous':escHtml(p.name||'User')} ${p.anon?'<span class="pan">Anon</span>':''} ${p.loyalty?'🤞':''}</div><div class="pt2">${fT(p.createdAt)}</div></div><span class="pdg ${p.type==='sorry'?'bso':'bno'}">${p.type==='sorry'?'💜 Sorry':'💙 Post'}</span></div><div class="pbd">${escHtml(p.text)}</div><div class="pa"><button class="pbtn" id="lk${p.id}" onclick="likeP('${p.id}',this)">❤️ ${p.likes||0}</button><button class="pbtn" onclick="openC('${p.id}')">💬 Comment</button></div>`;
+      feed.appendChild(d);
+    });
+    g('stp').textContent=posts.filter(p=>p.uid===window._user?.uid).length;
+  });
+}
+
+async function likeP(id,btn){
+  const d=await window._R.getDoc(`posts/${id}`);
+  if(!d.exists)return;
+  const cur=d.val.likes||0;
+  await window._R.updateDoc(`posts/${id}`,{likes:cur+1});
+  btn.classList.add('on');btn.textContent=`❤️ ${cur+1}`;
+}
+async function submitPost(){
+  const text=g('pta').value.trim();if(!text){toast('Kuch toh likho ✏️');return;}
+  const p=window._profile||{};
+  await window._R.addDoc('posts',{text,type:'normal',anon:isA,name:p.username||'User',avatar:p.avatar||'🌸',uid:window._user?.uid,loyalty:besties.length>=2,likes:0});
+  closePost();toast('Post ho gaya! 🎉');
+}
+async function submitSorry(){
+  const text=g('sta').value.trim();if(!text){toast('Apni baat likho 💜');return;}
+  const p=window._profile||{};
+  await window._R.addDoc('posts',{text,type:'sorry',anon:isSA,name:p.username||'User',avatar:p.avatar||'🌸',uid:window._user?.uid,loyalty:false,likes:0});
+  closeSorry();toast('Dil halka hua 💜');
+}
+
+/* ═══════════════ COMMENTS ═══════════════ */
+function openC(id){
+  curPId=id;g('cop').classList.remove('hd');
+  window._R.listen(`comments/${id}`,items=>{
+    const l=g('col');l.innerHTML='';
+    if(!items.length){l.innerHTML='<div style="text-align:center;color:var(--sb);font-size:13px;padding:10px;">Pehla comment karo! 💬</div>';return;}
+    items.reverse().forEach(c=>{l.innerHTML+=`<div class="citem"><div class="cav2">${c.avatar||'🌸'}</div><div class="cbd"><div class="cn2">${escHtml(c.name)}</div><div class="ct">${escHtml(c.text)}</div></div></div>`;});
+    l.scrollTop=l.scrollHeight;
+  });
+}
+async function submitC(){
+  const inp=g('cii'),text=inp.value.trim();if(!text||!curPId)return;
+  const p=window._profile||{};
+  await window._R.addDoc(`comments/${curPId}`,{text,name:p.username||'User',avatar:p.avatar||'🌸',uid:window._user?.uid});
+  inp.value='';
+}
+document.addEventListener('click',e=>{const c=g('cop');if(!c.classList.contains('hd')&&!c.contains(e.target))c.classList.add('hd');});
+
+/* ═══════════════ DIARY ═══════════════ */
+function loadDiary(){
+  if(!window._user) return;
+  window._R.listen(`diary/${window._user.uid}`,items=>{
+    const el=g('dent');el.innerHTML='';
+    if(!items.length){el.innerHTML='<div style="text-align:center;color:#B0956B;font-size:14px;padding:20px;">Pehli entry likho 📔</div>';return;}
+    items.forEach(e=>{el.innerHTML+=`<div class="dc"><div class="dd">${e.dateStr||'Aaj'}</div><div class="dt">${escHtml(e.text)}</div></div>`;});
+    g('std').textContent=items.length;
+  });
+}
+async function saveDiary(){
+  const text=g('dta').value.trim();if(!text){toast('Kuch toh likho 📔');return;}
+  const now=new Date(),dateStr=now.toLocaleDateString('hi-IN',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  await window._R.addDoc(`diary/${window._user.uid}`,{text,dateStr});
+  closeDiary();toast('Diary mein likh diya! 📔');
+}
+
+/* ═══════════════ SEARCH ═══════════════ */
+function doSrch(v){
+  const res=g('search-results');
+  if(!v.trim()){res.innerHTML='<div style="text-align:center;color:var(--sb);font-size:13px;padding:10px;">Naam type karo...</div>';return;}
+  window._R.listenObj('online',all=>{
+    if(!all){res.innerHTML='';return;}
+    const users=Object.entries(all).map(([uid,u])=>({uid,...u})).filter(u=>u.uid!==window._user?.uid&&(u.username||'').toLowerCase().includes(v.toLowerCase()));
+    res.innerHTML='';
+    if(!users.length){res.innerHTML='<div style="text-align:center;color:var(--sb);font-size:13px;padding:10px;">Koi nahi mila</div>';return;}
+    users.slice(0,10).forEach(u=>{
+      const isBestie=besties.includes(u.uid);
+      res.innerHTML+=`<div class="ur" onclick="openChat('${u.uid}','${escAttr(u.username||'User')}','${u.avatar||'🌸'}',${!!u.online},${isBestie})"><div class="pav">${u.avatar||'🌸'}</div><div><div class="pn">${escHtml(u.username||'User')} ${isBestie?'🤞':''}</div><div style="font-size:12px;color:var(--sb)">${u.online?'● Online':'○ Offline'} ${u.mood?'• '+moodEmoji(u.mood)+' '+u.mood:''}</div></div></div>`;
+    });
+  });
+}
+function topS(el){
+  const t=el.textContent;
+  g('sinp').value=t;
+  toast(`${t} posts dikh rahe hain 🔍`);
+  // Filter posts (show in feed)
+}
+
+/* ═══════════════ AI CHAT ═══════════════ */
+function openAI(){g('aiwin').classList.add('on');}
+function closeAI(){g('aiwin').classList.remove('on');}
+async function sendAI(){
+  const inp=g('aiinp'),text=inp.value.trim();if(!text)return;
+  const ms=g('aimsgs');
+  ms.innerHTML+=`<div class="msg mme">${escHtml(text)}<span class="mtm">Abhi</span></div>`;
+  inp.value='';ms.scrollTop=ms.scrollHeight;
+  const tid='t'+Date.now();
+  ms.innerHTML+=`<div class="msg mth" id="${tid}"><div class="typing"><span></span><span></span><span></span></div></div>`;
+  ms.scrollTop=ms.scrollHeight;
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:350,system:`Tum Raahat app ke AI Bestie ho. Ek caring, warm dost ki tarah baat karo. Hindi aur Hinglish mix mein. Short replies (2-3 sentences). Kabhi harmful advice mat do. Agar koi bahut dukhi ho to gently professional help suggest karo.`,messages:[{role:'user',content:text}]})});
+    const data=await res.json();
+    const reply=data.content?.[0]?.text||'💙 Dobara batao?';
+    g(tid).innerHTML=escHtml(reply)+'<span class="mtm">Abhi</span>';
+  }catch(e){
+    const d=['💙 Haan, main sun raha hoon. Aur batao.','😊 Aap theek ho jaoge, waqt chahiye.','🌸 Raahat pe hamesha apna koona milega.','Dil ki baat batao, main yahan hoon 💙','Samajhta hoon. Kuch aur share karna hai? 🌸'];
+    g(tid).innerHTML=d[Math.floor(Math.random()*d.length)]+'<span class="mtm">Abhi</span>';
+  }
+  ms.scrollTop=ms.scrollHeight;
+}
+
+/* ═══════════════ NAV ═══════════════ */
+function swTab(name,el){
+  document.querySelectorAll('.tp').forEach(t=>t.classList.remove('on'));
+  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
+  g(`t-${name}`).classList.add('on');
+  el.classList.add('on');
+  if(name==='profile')loadProfile();
+  if(name==='chat' && myMood) setChatMood(myMood, moodEmoji(myMood)+' '+myMood);
+}
+
+/* ═══════════════ MODALS / PANELS ═══════════════ */
+function openPost(){g('pmo').classList.add('on');}
+function closePost(){g('pmo').classList.remove('on');g('pta').value='';}
+function togA(){isA=!isA;g('atsw').classList.toggle('on',isA);g('atlb').textContent=isA?'Anonymous ON ✅':'Anonymous';}
+function openSorry(){g('smo').classList.add('on');}
+function closeSorry(){g('smo').classList.remove('on');g('sta').value='';}
+function togS(){isSA=!isSA;g('stsw').classList.toggle('on',isSA);g('stlb').textContent=isSA?'Anonymous (ON)':'Naam dikhao';}
+function openDiary(){g('dmod').classList.add('on');}
+function closeDiary(){g('dmod').classList.remove('on');g('dta').value='';}
+function openPnl(id){g(id).classList.add('on');}
+function closePnl(id){g(id).classList.remove('on');}
+
+/* ═══════════════ UTILS ═══════════════ */
+function g(id){return document.getElementById(id);}
+function fT(ts){if(!ts)return'Abhi';return new Date(ts).toLocaleTimeString('hi-IN',{hour:'2-digit',minute:'2-digit'});}
+function escHtml(t){if(!t)return'';return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function escAttr(t){if(!t)return'';return String(t).replace(/'/g,"\\'");}
+let tTm;
+function toast(m){const t=g('toast');t.textContent=m;t.classList.add('on');clearTimeout(tTm);tTm=setTimeout(()=>t.classList.remove('on'),2800);}
+</script>
+</body>
+</html>
